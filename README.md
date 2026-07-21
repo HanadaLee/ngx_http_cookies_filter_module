@@ -13,6 +13,7 @@ A NGINX module for fine-grained request cookies control.
 - [Status](#status)
 - [Synopsis](#synopsis)
 - [Installation](#installation)
+- [Conditional syntax](#conditional-syntax)
 - [Directives](#directives)
   - [cookies\_filter](#cookies_filter)
   - [cookies\_filter\_inherit](#cookies_filter_inherit)
@@ -57,8 +58,11 @@ http {
             # Keep cookies. Other cookies will be cleared.
             cookies_filter keep e f g;
 
-            # Conditional filtering. Only effected if varialbe $http_a is not empty or '0'.
-            cookies_filter set h 4 if=$http_a;
+            # With ngx_condition_module.
+            condition has_header_a is_not_empty $http_a;
+            when has_header_a {
+                cookies_filter set h 4;
+            }
 
             # If has `-i` option, the cookie name will be case-insensitive.
             cookies_filter set -i i 1;
@@ -79,15 +83,26 @@ http {
 
 To use theses modules, configure your nginx branch with `--add-module=/path/to/ngx_http_cookies_filter_module`.
 
+To enable named conditions, build `ngx_condition_module` and this module statically in the same nginx configuration.
+
+# Conditional syntax
+
+Conditional syntax is selected at compile time:
+
+- With `ngx_condition_module`, use named `condition` expressions and place `cookies_filter` inside an `http`, `server`, or `location` `when` block. `if=` and `if!=` parameters are rejected.
+- Without `ngx_condition_module`, `when` is unavailable and legacy `if=`/`if!=` parameters remain supported. `if=` matches a non-empty value other than `"0"`; `if!=` matches an empty value or `"0"`.
+
+If a condition does not match, the rule is skipped and evaluation continues with the next cookie rule.
+
 # Directives
 
 ## cookies_filter
 
-**Syntax:** `cookies_filter opeartor [-i] cookie_name value [flag=break] [if=condition];`
+**Syntax:** `cookies_filter operator [-i] cookie_name [value ...] [flag=break];`
 
 **Default:** —
 
-**Context:** http, server, location
+**Context:** http, server, location, http when, server when, location when
 
 Filters cookies in the request headers. All filter rules are applied in the order they are defined. the result of cookies will be output to `$filtered_cookies` variable.
 
@@ -104,7 +119,7 @@ The following parameter are supported:
 
 `-i` parameter makes the cookie name case-insensitive.
 `flag=break` parameter makes the module stop evaluating subsequent rules and output the final result.
-`if=condition` parameter makes the module evaluate the rule only if the condition value is not empty or '0'.
+Legacy `if=condition` and `if!=condition` parameters are available only when `ngx_condition_module` is not built.
 
 ## cookies_filter_inherit
 

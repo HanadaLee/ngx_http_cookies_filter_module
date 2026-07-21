@@ -8,6 +8,10 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
+#if (NGX_CONDITION)
+#include <ngx_http_condition_module.h>
+#endif
+
 
 #define NGX_HTTP_COOKIES_FILTER_INHERIT_OFF      0
 #define NGX_HTTP_COOKIES_FILTER_INHERIT_ON       1
@@ -33,8 +37,12 @@ typedef struct {
     ngx_array_t                *name_list;  /* array of ngx_str_t */
     ngx_http_complex_value_t   *value;
     ngx_uint_t                  flag;
+#if (NGX_CONDITION)
+    ngx_condition_expr_id_t     expr_id;
+#else
     ngx_http_complex_value_t   *filter;
     ngx_int_t                   negative;
+#endif
 } ngx_http_cookies_filter_rule_t;
 
 
@@ -78,7 +86,12 @@ static ngx_conf_enum_t  ngx_http_cookies_filter_inherit[] = {
 static ngx_command_t ngx_http_cookies_filter_commands[] = {
 
     { ngx_string("cookies_filter"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_2MORE,
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF
+#if (NGX_CONDITION)
+                        |NGX_HTTP_MAIN_WHEN_CONF|NGX_HTTP_SRV_WHEN_CONF
+                        |NGX_HTTP_LOC_WHEN_CONF
+#endif
+                        |NGX_CONF_2MORE,
       ngx_http_cookies_filter,
       NGX_HTTP_LOC_CONF_OFFSET,
       0,
@@ -322,6 +335,13 @@ ngx_http_filtered_cookies_variable(ngx_http_request_t *r,
 
     for (i = 0; i < clcf->rules->nelts; i++) {
 
+#if (NGX_CONDITION)
+        if (ngx_http_condition_get_expr_result(r, rule[i].expr_id)
+            != NGX_CONDITION_EXPR_HIT)
+        {
+            continue;
+        }
+#else
         if (rule[i].filter) {
 
             if (ngx_http_complex_value(r, rule[i].filter, &value) != NGX_OK) {
@@ -341,6 +361,7 @@ ngx_http_filtered_cookies_variable(ngx_http_request_t *r,
                 }
             }
         }
+#endif
 
         op = rule[i].op;
 
@@ -644,6 +665,10 @@ ngx_http_cookies_filter(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     ngx_memzero(rule, sizeof(ngx_http_cookies_filter_rule_t));
 
+#if (NGX_CONDITION)
+    rule->expr_id = ngx_condition_get_associated_expr_id(cf);
+#endif
+
     if (value[1].data[0] == 'a' || value[1].data[0] == 'A') {
 
         if (value[1].data[1] == 'd' || value[1].data[1] == 'D') {
@@ -770,6 +795,7 @@ parse_tail:
 
     for ( /* void */ ; i < cf->args->nelts; i++) {
 
+#if !(NGX_CONDITION)
         if (ngx_strncmp(value[i].data, "if=", 3) == 0
             || ngx_strncmp(value[i].data, "if!=", 4) == 0)
         {
@@ -802,6 +828,7 @@ parse_tail:
 
             continue;
         }
+#endif
 
         if (ngx_strncmp(value[i].data, "flag=", 5) == 0) {
             s.len = value[i].len - 5;
